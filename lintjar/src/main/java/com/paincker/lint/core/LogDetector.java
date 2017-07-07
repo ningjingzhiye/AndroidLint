@@ -33,8 +33,9 @@ public class LogDetector extends Detector implements Detector.JavaPsiScanner {
 
     @Override
     public void visitMethod(JavaContext context, JavaElementVisitor visitor, PsiMethodCallExpression call, PsiMethod method) {
-        if (!LintConfig.getInstance(context).shouldCheckFile(context, ISSUE, call)) {
-            LogUtils.d("skip visit call: \"" + call.getText() + "\"");
+        boolean skip = !LintConfig.getInstance(context).shouldCheckFile(context, ISSUE, call);
+        LogUtils.d("CallExp: '" + call.getText() + "', Skip = " + skip);
+        if (skip) {
             return;
         }
         if (context.getEvaluator().isMemberInClass(method, "android.util.Log")) {
