@@ -1,6 +1,6 @@
 {
   // 检查指定commit之后的新增文件
-//  "git-base": "",
+  "git-base": "6f00672375d41f9756685ffc48b3f4b6d2376921",
   // 指定需要按git版本检查的Issue
   "git-based-issues": [
     "LogUsage"

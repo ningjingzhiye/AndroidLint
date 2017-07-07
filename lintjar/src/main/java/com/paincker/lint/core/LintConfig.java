@@ -109,6 +109,10 @@ public final class LintConfig {
             return null;
         }
         HashSet<String> addedFiles = null;
+        // diff时包含未追踪文件
+        // --intent-to-add  -N -- record only that path will be added later
+        exec(projectDir, "git add -N .");
+        // diff输出新增文件
         String result = exec(projectDir, "git diff " + gitBase + " --diff-filter=A --name-only");
         if (result != null) {
             LogUtils.d("git added files = \n" + result);
