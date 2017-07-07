@@ -1,0 +1,10 @@
+{
+  // 检查指定commit之后的新增文件
+//  "git-base": "",
+  // 指定需要按git版本检查的Issue
+  "git-based-issues": [
+    "LogUsage"
+  ],
+  // 输出log文件，用于调试AndroidStudio中的Lint检查
+  "log-file": "build/custom-lint.log"
+}
