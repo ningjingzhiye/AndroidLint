@@ -1,13 +1,17 @@
 package com.paincker.lint.core;
 
+import com.android.annotations.NonNull;
 import com.android.tools.lint.detector.api.Context;
 import com.android.tools.lint.detector.api.Issue;
 import com.android.tools.lint.detector.api.JavaContext;
+import com.android.tools.lint.detector.api.Location;
+import com.android.tools.lint.detector.api.XmlContext;
 import com.google.gson.Gson;
 import com.google.gson.annotations.SerializedName;
-import com.intellij.psi.PsiExpression;
+import com.intellij.psi.PsiElement;
 
 import org.apache.commons.compress.utils.IOUtils;
+import org.w3c.dom.Node;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -43,9 +47,9 @@ public final class LintConfig {
      */
     private String mGitDir;
     /**
-     * git中新增的文件
+     * git中的历史文件
      */
-    private HashSet<String> mAddedFiles;
+    private HashSet<String> mOldFiles;
     /**
      * 需要区分git版本的Issue
      */
@@ -58,8 +62,10 @@ public final class LintConfig {
             Config config = readConfig(configFile);
             if (config != null) {
                 mGitDir = getGitDir(projectDir);
-                mGitBasedIssueSet = listToSet(config.mGitBasedIssues);
-                mAddedFiles = readAddedFiles(projectDir, config.mGitBase);
+                if (notEmpty(mGitDir)) {
+                    mGitBasedIssueSet = listToSet(config.mGitBasedIssues);
+                    mOldFiles = readOldFiles(projectDir, config.mGitBase);
+                }
                 if (notEmpty(config.mLogFile)) {
                     LogUtils.setLogFile(new File(projectDir, config.mLogFile));
                 }
@@ -68,21 +74,35 @@ public final class LintConfig {
         }
     }
 
-    public boolean shouldCheckFile(JavaContext context, Issue issue, PsiExpression call) {
-        if (context == null || issue == null || call == null || mAddedFiles == null || mGitDir == null
-                || mGitBasedIssueSet == null || !mGitBasedIssueSet.contains(issue.getId())) {
+    public boolean shouldCheckFile(XmlContext context, Issue issue, Node node) {
+        if (context == null || issue == null || node == null || mOldFiles == null || mOldFiles.isEmpty()
+                || mGitDir == null || mGitBasedIssueSet == null || !mGitBasedIssueSet.contains(issue.getId())) {
             return true;
         }
+        Location location = context.getLocation(node);
+        return shouldCheckLocation(location, mGitDir, mOldFiles);
+    }
+
+    public boolean shouldCheckFile(JavaContext context, Issue issue, PsiElement node) {
+        if (context == null || issue == null || node == null || mOldFiles == null || mOldFiles.isEmpty()
+                || mGitDir == null || mGitBasedIssueSet == null || !mGitBasedIssueSet.contains(issue.getId())) {
+            return true;
+        }
+        Location location = context.getLocation(node);
+        return shouldCheckLocation(location, mGitDir, mOldFiles);
+    }
+
+    private boolean shouldCheckLocation(Location location, @NonNull String gitDir, @NonNull HashSet<String> oldFiles) {
         // path = "/usr/project/Test.java"
         // gitDir = "/usr/project/"
         // relative = "Test.java"
-        String path = context.getLocation(call).getFile().getAbsolutePath();
-        int len = mGitDir.length();
+        String path = location.getFile().getAbsolutePath();
+        int len = gitDir.length();
         if (!path.startsWith(mGitDir) || path.length() <= len) {
             return true;
         }
         String relative = path.substring(len);
-        return mAddedFiles.contains(relative);
+        return !oldFiles.contains(relative);
     }
 
     private Config readConfig(File configFile) {
@@ -104,30 +124,52 @@ public final class LintConfig {
         return null;
     }
 
-    private HashSet<String> readAddedFiles(File projectDir, String gitBase) {
+    private HashSet<String> readOldFiles(File dir, String gitBase) {
         if (isEmpty(gitBase)) {
             return null;
         }
-        HashSet<String> addedFiles = null;
+        String result = exec(dir, "git ls-tree --full-tree --full-name --name-only -r " + gitBase);
+        if (result != null) {
+            LogUtils.d("git old files = \n" + result);
+            String[] split = result.split("\n");
+            if (split.length > 0) {
+                HashSet<String> oldFiles = new HashSet<>();
+                for (String s : split) {
+                    s = s.trim();
+                    if (notEmpty(s)) {
+                        oldFiles.add(s);
+                    }
+                }
+                return oldFiles;
+            }
+        }
+        return null;
+    }
+
+    private HashSet<String> readAddedFiles(File dir, String gitBase) {
+        if (isEmpty(gitBase)) {
+            return null;
+        }
         // diff时包含未追踪文件
         // --intent-to-add  -N -- record only that path will be added later
-        exec(projectDir, "git add -N .");
+        exec(dir, "git add --intent-to-add .");
         // diff输出新增文件
-        String result = exec(projectDir, "git diff " + gitBase + " --diff-filter=A --name-only");
+        String result = exec(dir, "git diff " + gitBase + " --diff-filter=A --name-only");
         if (result != null) {
             LogUtils.d("git added files = \n" + result);
             String[] split = result.split("\n");
             if (split.length > 0) {
-                addedFiles = new HashSet<>();
+                HashSet<String> addedFiles = new HashSet<>();
                 for (String s : split) {
                     s = s.trim();
                     if (notEmpty(s)) {
                         addedFiles.add(s);
                     }
                 }
+                return addedFiles;
             }
         }
-        return addedFiles;
+        return null;
     }
 
     /**
